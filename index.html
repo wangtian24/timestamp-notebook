@@ -24,13 +24,19 @@
   <button id="toggle">Start</button>
   <button id="reset">Reset</button>
   <button id="layout"></button>
+  <button id="lang"></button>
 </header>
-<input id="line" placeholder="Type a note, press Enter" autofocus>
+<input id="line" autofocus>
 <ul id="notes"></ul>
 <script>
 const $ = id => document.getElementById(id);
 const KEY = 'tsnb';
-let S = { acc: 0, t0: null, notes: [], layout: 'inline' };
+let S = { acc: 0, t0: null, notes: [], layout: 'inline', lang: 'en' };
+const T = {
+  en: { start: 'Start', pause: 'Pause', reset: 'Reset', inline: 'Layout: inline', rows: 'Layout: rows', lang: '中文', line: 'Type a note, press Enter', confirm: 'Clear timer and all notes?' },
+  zh: { start: '开始', pause: '暂停', reset: '重置', inline: '布局：行内', rows: '布局：分行', lang: 'EN', line: '输入笔记，按回车', confirm: '清除计时器和所有笔记？' },
+};
+const t = k => T[S.lang][k];
 
 const elapsed = () => S.acc + (S.t0 ? Date.now() - S.t0 : 0);
 const fmt = ms => {
@@ -40,11 +46,15 @@ const fmt = ms => {
 
 function render() {
   $('clock').textContent = fmt(elapsed());
-  $('toggle').textContent = S.t0 ? 'Pause' : 'Start';
+  $('toggle').textContent = t(S.t0 ? 'pause' : 'start');
 }
 function renderNotes() {
   $('notes').className = S.layout;
-  $('layout').textContent = S.layout === 'inline' ? 'Layout: inline' : 'Layout: rows';
+  $('layout').textContent = t(S.layout);
+  $('reset').textContent = t('reset');
+  $('lang').textContent = t('lang');
+  $('line').placeholder = t('line');
+  document.documentElement.lang = S.lang;
   $('notes').replaceChildren(...S.notes.map(([t, text]) => {
     const li = document.createElement('li'), time = document.createElement('time');
     time.textContent = fmt(t);
@@ -75,8 +85,9 @@ async function load() {
 }
 
 $('toggle').onclick = () => { if (S.t0) { S.acc += Date.now() - S.t0; S.t0 = null; } else S.t0 = Date.now(); render(); save(); };
-$('reset').onclick = () => { if (!confirm('Clear timer and all notes?')) return; S = { ...S, acc: 0, t0: null, notes: [] }; render(); renderNotes(); save(); };
+$('reset').onclick = () => { if (!confirm(t('confirm'))) return; S = { ...S, acc: 0, t0: null, notes: [] }; render(); renderNotes(); save(); };
 $('layout').onclick = () => { S.layout = S.layout === 'inline' ? 'rows' : 'inline'; renderNotes(); save(); };
+$('lang').onclick = () => { S.lang = S.lang === 'en' ? 'zh' : 'en'; render(); renderNotes(); save(); };
 $('line').onkeydown = e => {
   const text = e.target.value.trim();
   if (e.key !== 'Enter' || !text) return;
