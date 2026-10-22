@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timestamped Notebook</title>
+<style>
+  :root{color-scheme:light}
+  body{font:16px/1.5 ui-monospace,Menlo,monospace;max-width:720px;margin:2rem auto;padding:0 16px;background:#fff;color:#222}
+  header{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+  #clock{font-size:1.6rem;font-variant-numeric:tabular-nums}
+  button{font:inherit;padding:.3rem .8rem;cursor:pointer}
+  #line{width:100%;font:inherit;padding:.5rem;box-sizing:border-box}
+  #notes{list-style:none;padding:0;margin:1rem 0}
+  #notes li{white-space:pre-wrap;padding:.15rem 0;border-bottom:1px solid #eee}
+  #notes time{color:#888;font-variant-numeric:tabular-nums}
+  #notes.inline time{display:inline-block;width:7ch;text-align:right}
+  #notes.rows time{display:block}
+</style>
+</head>
+<body>
+<header>
+  <span id="clock">00:00</span>
+  <button id="toggle">Start</button>
+  <button id="reset">Reset</button>
+  <button id="layout"></button>
+</header>
+<input id="line" placeholder="Type a note, press Enter" autofocus>
+<ul id="notes"></ul>
+<script>
+const $ = id => document.getElementById(id);
+const KEY = 'tsnb';
+let S = { acc: 0, t0: null, notes: [], layout: 'inline' };
+
+const elapsed = () => S.acc + (S.t0 ? Date.now() - S.t0 : 0);
+const fmt = ms => {
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), p = n => String(n).padStart(2, '0');
+  return (h ? h + ':' : '') + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+};
+
+function render() {
+  $('clock').textContent = fmt(elapsed());
+  $('toggle').textContent = S.t0 ? 'Pause' : 'Start';
+}
+function renderNotes() {
+  $('notes').className = S.layout;
+  $('layout').textContent = S.layout === 'inline' ? 'Layout: inline' : 'Layout: rows';
+  $('notes').replaceChildren(...S.notes.map(([t, text]) => {
+    const li = document.createElement('li'), time = document.createElement('time');
+    time.textContent = fmt(t);
+    li.append(time, S.layout === 'inline' ? ' ' + text : text);
+    return li;
+  }));
+}
+
+const b64 = u8 => btoa(u8.reduce((s, c) => s + String.fromCharCode(c), '')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+
+let urlTimer;
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(S));
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(async () => {
+    const z = await pipe(new TextEncoder().encode(JSON.stringify(S)), new CompressionStream('deflate-raw'));
+    history.replaceState(null, '', '#' + b64(z));
+  }, 3000);
+}
+async function load() {
+  const h = location.hash.slice(1);
+  try {
+    if (h) S = JSON.parse(new TextDecoder().decode(await pipe(unb64(h), new DecompressionStream('deflate-raw'))));
+    else S = JSON.parse(localStorage.getItem(KEY)) || S;
+  } catch {}
+}
+
+$('toggle').onclick = () => { if (S.t0) { S.acc += Date.now() - S.t0; S.t0 = null; } else S.t0 = Date.now(); render(); save(); };
+$('reset').onclick = () => { if (!confirm('Clear timer and all notes?')) return; S = { ...S, acc: 0, t0: null, notes: [] }; render(); renderNotes(); save(); };
+$('layout').onclick = () => { S.layout = S.layout === 'inline' ? 'rows' : 'inline'; renderNotes(); save(); };
+$('line').onkeydown = e => {
+  const text = e.target.value.trim();
+  if (e.key !== 'Enter' || !text) return;
+  S.notes.push([elapsed(), text]); e.target.value = '';
+  renderNotes(); save();
+};
+load().then(() => { if (location.hash) save(); render(); renderNotes(); setInterval(render, 250); });
+</script>
+</body>
+</html>
